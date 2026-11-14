@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shahmat O'yini</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chess.js va Chessboard.js kutubxonalari -->
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="max-w-md w-full bg-slate-800 rounded-2xl shadow-2xl p-6 flex flex-col items-center">
+        <h1 class="text-3xl font-bold mb-6 text-indigo-400">Shahmat O'yini</h1>
+
+        <!-- Sozlamalar paneli -->
+        <div id="setup-panel" class="w-full space-y-4 mb-6">
+            <div>
+                <label class="block text-sm font-medium mb-1">O'yin rejimi:</label>
+                <select id="game-mode" class="w-full bg-slate-700 border border-slate-600 rounded-lg p-2.5 text-white">
+                    <option value="pvp">Ikki kishilik (Birgalikda)</option>
+                    <option value="pve" selected>Bot bilan o'ynash</option>
+                </select>
+            </div>
+
+            <div id="color-container">
+                <label class="block text-sm font-medium mb-1">O'yinchi rangi:</label>
+                <select id="player-color" class="w-full bg-slate-700 border border-slate-600 rounded-lg p-2.5 text-white">
+                    <option value="w" selected>Oqlar (Birinchi yuradi)</option>
+                    <option value="b">Qoralar</option>
+                </select>
+            </div>
+
+            <div id="difficulty-container">
+                <label class="block text-sm font-medium mb-1">Qiyinlik darajasi:</label>
+                <select id="difficulty" class="w-full bg-slate-700 border border-slate-600 rounded-lg p-2.5 text-white">
+                    <option value="easy">Oson</option>
+                    <option value="medium" selected>O'rtacha</option>
+                    <option value="hard">Qiyin</option>
+                </select>
+            </div>
+
+            <button id="start-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 font-semibold py-3 rounded-lg transition duration-200 shadow-lg">O'yinni boshlash</button>
+        </div>
+
+        <!-- Shahmat taxtasi containeri -->
+        <div id="board-container" class="w-full hidden flex flex-col items-center">
+            <div id="board" style="width: 100%" class="max-w-[350px] mb-4 rounded-lg overflow-hidden shadow-lg"></div>
+            <div id="status" class="text-lg font-medium mb-4 text-emerald-400">Navbat: Oqlar</div>
+            <button id="restart-btn" class="w-full bg-rose-600 hover:bg-rose-500 font-semibold py-2.5 rounded-lg transition duration-200">Menyuga qaytish</button>
+        </div>
+    </div>
+
+    <script>
+        let board = null;
+        let game = new Chess();
+        let gameMode = 'pve';
+        let difficulty = 'medium';
+        let playerColor = 'w';
+
+        // Rejim o'zgarganda rang va qiyinlik sozlamalarini boshqarish
+        $('#game-mode').change(function() {
+            if ($(this).val() === 'pvp') {
+                $('#color-container').hide();
+                $('#difficulty-container').hide();
+            } else {
+                $('#color-container').show();
+                $('#difficulty-container').show();
+            }
+        });
+
+        // O'yinni boshlash
+        $('#start-btn').click(function() {
+            gameMode = $('#game-mode').val();
+            difficulty = $('#difficulty').val();
+            playerColor = $('#player-color').val();
+            
+            $('#setup-panel').addClass('hidden');
+            $('#board-container').removeClass('hidden');
+
+            game.reset();
+            
+            let orientationSetting = (gameMode === 'pve') ? (playerColor === 'w' ? 'white' : 'black') : 'white';
+
+            let config = {
+                draggable: true,
+                position: 'start',
+                orientation: orientationSetting,
+                onDragStart: onDragStart,
+                onDrop: onDrop,
+                onSnapEnd: onSnapEnd
+            };
+            
+            if (board === null) {
+                board = Chessboard('board', config);
+            } else {
+                board.orientation(orientationSetting);
+                board.start();
+            }
+            updateStatus();
+
+            // Agar PVE rejimida o'yinchi qoralarni tanlagan bo'lsa, bot birinchi yurishni qiladi
+            if (gameMode === 'pve' && playerColor === 'b') {
+                window.setTimeout(makeBotMove, 250);
+            }
+        });
+
+        // Menyuga qaytish
+        $('#restart-btn').click(function() {
+            $('#board-container').addClass('hidden');
+            $('#setup-panel').removeClass('hidden');
+        });
+
+        function onDragStart(source, piece, position, orientation) {
+            if (game.game_over()) return false;
+
+            if (gameMode === 'pve' && game.turn() !== playerColor) return false;
+
+            if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+                (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
+                return false;
+            }
+        }
+
+        function onDrop(source, target) {
+            let move = game.move({
+                from: source,
+                to: target,
+                promotion: 'q' 
+            });
+
+            if (move === null) return 'snapback';
+
+            updateStatus();
+
+            if (gameMode === 'pve' && !game.game_over() && game.turn() !== playerColor) {
+                window.setTimeout(makeBotMove, 250);
+            }
+        }
+
+        function onSnapEnd() {
+            board.position(game.fen());
+        }
+
+        function updateStatus() {
+            let status = '';
+            let moveColor = (game.turn() === 'w') ? 'Oqlar' : 'Qoralar';
+
+            if (game.in_checkmate()) {
+                status = `O'yin tugadi! Mat: ${moveColor} yutqazdi.`;
+            } else if (game.in_draw()) {
+                status = `O'yin durang bilan tugadi!`;
+            } else {
+                status = `Navbat: ${moveColor}`;
+                if (game.in_check()) {
+                    status += ' (SHAX!)';
+                }
+            }
+            $('#status').text(status);
+        }
+
+        // --- BOT LOGIKASI ---
+        function makeBotMove() {
+            let move = null;
+            if (difficulty === 'easy') {
+                move = getRandomMove();
+            } else if (difficulty === 'medium') {
+                move = getMediumMove();
+            } else {
+                move = getBestMove(3); 
+            }
+
+            if (move) {
+                game.move(move);
+                board.position(game.fen());
+                updateStatus();
+            }
+        }
+
+        function getRandomMove() {
+            let moves = game.ugly_moves();
+            if (moves.length === 0) return null;
+            let randomIdx = Math.floor(Math.random() * moves.length);
+            return moves[randomIdx];
+        }
+
+        function getMediumMove() {
+            let moves = game.ugly_moves();
+            if (moves.length === 0) return null;
+            
+            for (let i = 0; i < moves.length; i++) {
+                game.ugly_move(moves[i]);
+                let isCapture = game.history({verbose: true}).pop().captured;
+                game.undo();
+                if (isCapture) return moves[i];
+            }
+            return moves[Math.floor(Math.random() * moves.length)];
+        }
+
+        const pieceValues = {p: 10, n: 30, b: 30, r: 50, q: 90, k: 900};
+
+        function evaluateBoard(boardState) {
+            let totalEvaluation = 0;
+            let boardArray = game.board();
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    let piece = boardArray[r][c];
+                    if (piece) {
+                        let val = pieceValues[piece.type];
+                        totalEvaluation += (piece.color === 'w') ? val : -val;
+                    }
+                }
+            }
+            return totalEvaluation;
+        }
+
+        function minimax(depth, game, isMaximizing) {
+            if (depth === 0 || game.game_over()) {
+                return evaluateBoard(game.board());
+            }
+
+            let moves = game.ugly_moves();
+            if (isMaximizing) {
+                let maxEval = -9999;
+                for (let i = 0; i < moves.length; i++) {
+                    game.ugly_move(moves[i]);
+                    let evaluation = minimax(depth - 1, game, false);
+                    game.undo();
+                    maxEval = Math.max(maxEval, evaluation);
+                }
+                return maxEval;
+            } else {
+                let minEval = 9999;
+                for (let i = 0; i < moves.length; i++) {
+                    game.ugly_move(moves[i]);
+                    let evaluation = minimax(depth - 1, game, true);
+                    game.undo();
+                    minEval = Math.min(minEval, evaluation);
+                }
+                return minEval;
+            }
+        }
+
+        function getBestMove(depth) {
+            let moves = game.ugly_moves();
+            let bestMove = null;
+            let bestValue = (game.turn() === 'w') ? -9999 : 9999;
+
+            for (let i = 0; i < moves.length; i++) {
+                game.ugly_move(moves[i]);
+                let value = minimax(depth - 1, game, game.turn() === 'w');
+                game.undo();
+
+                if (game.turn() === 'w') {
+                    if (value > bestValue) {
+                        bestValue = value;
+                        bestMove = moves[i];
+                    }
+                } else {
+                    if (value < bestValue) {
+                        bestValue = value;
+                        bestMove = moves[i];
+                    }
+                }
+            }
+            return bestMove || moves[0];
+        }
+    </script>
+</body>
+</html>
